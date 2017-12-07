@@ -2,3 +2,4 @@ tags
 jsonator
 log
 pid
+secrets.env

@@ -1,0 +1,12 @@
+version: "3.3"
+
+services:
+  jsonator:
+    build: .
+    image: musl/jsonator:v1
+    container_name: jsonator
+    ports:
+      - 8080:8080
+    env_file:
+        - secrets.env
+

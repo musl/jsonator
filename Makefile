@@ -2,7 +2,8 @@ BIN := $(shell basename $(CURDIR))
 
 DEPS := "github.com/gin-gonic/gin"
 DEPS += "github.com/orcaman/concurrent-map"
-DEPS += "github.com/fvbock/endless"
+DEPS += "github.com/newrelic/go-agent"
+DEPS += "github.com/kelseyhightower/envconfig"
 
 .PHONY: all clean commands test
 
@@ -24,4 +25,8 @@ $(BIN):
 
 test: 
 	go test .
+
+docker: clean
+	GOOS=linux GOARCH=amd64 go build .
+	docker-compose up --build
 
