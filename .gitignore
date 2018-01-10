@@ -1,5 +1,8 @@
 tags
 jsonator
+jsonator.test
+*.prof
+*.svg
 log
 pid
 secrets.env

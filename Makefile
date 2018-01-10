@@ -28,5 +28,5 @@ test:
 
 docker: clean
 	GOOS=linux GOARCH=amd64 go build .
-	docker-compose up --build
+	docker-compose up --build -d
 

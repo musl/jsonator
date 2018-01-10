@@ -11,8 +11,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"runtime"
 	"syscall"
 )
+
+const Version = "0.0.1"
 
 // A generic type to hold arbitrary JSON.
 type Document interface{}
@@ -117,10 +120,14 @@ func GetDoc(c *gin.Context) {
 func PutDoc(c *gin.Context) {
 	var doc Document
 	store := c.MustGet("store").(*Store)
+	txn, have_txn := c.Get("NewRelicTransaction")
 	key := c.Param("key")
 
 	err := c.ShouldBindJSON(&doc)
 	if err != nil {
+		if have_txn {
+			txn.(newrelic.Transaction).NoticeError(err)
+		}
 		c.JSON(http.StatusUnprocessableEntity, "")
 		return
 	}
@@ -136,9 +143,13 @@ func PutDoc(c *gin.Context) {
 func PutBatch(c *gin.Context) {
 	var batch map[string]interface{}
 	store := c.MustGet("store").(*Store)
+	txn, have_txn := c.Get("NewRelicTransaction")
 
 	err := c.ShouldBindJSON(&batch)
 	if err != nil {
+		if have_txn {
+			txn.(newrelic.Transaction).NoticeError(err)
+		}
 		c.JSON(http.StatusUnprocessableEntity, "")
 		return
 	}
@@ -180,18 +191,13 @@ func StoreMiddleware(key string, store *Store) gin.HandlerFunc {
 /*
  * Use NewRelic to track statistics.
  */
-func NewRelicMiddleware(name, key string) gin.HandlerFunc {
-	config := newrelic.NewConfig(name, key)
-	app, err := newrelic.NewApplication(config)
-	if err != nil {
-		panic(err.Error())
-	}
-
+func NewRelicMiddleware(app newrelic.Application) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
 		txn_name := fmt.Sprintf("%s", path)
 
 		txn := app.StartTransaction(txn_name, c.Writer, c.Request)
+		c.Set("NewRelicTransaction", txn)
 		defer txn.End()
 
 		c.Next()
@@ -210,14 +216,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err.Error())
 	}
-
-	/*
-		flag.StringVar(&config.BindAddr, "bind", ":8080", "bind address and port")
-		flag.StringVar(&config.LogPath, "log", "/dev/stdout", "path to log file")
-		flag.StringVar(&config.NewRelicKey, "newrelic-key", "", "NewRelic license key")
-		flag.StringVar(&config.NewRelicName, "newrelic-name", "jsonator", "NewRelic app name")
-		flag.Parse()
-	*/
 
 	// Configure logging to make debugging easy and provide a single,
 	// consistent way to get log info out of the app.
@@ -239,7 +237,25 @@ func main() {
 
 	// Use NewRelic middleware for request stats.
 	if config.NewRelicKey != "" && config.NewRelicName != "" {
-		router.Use(NewRelicMiddleware(config.NewRelicName, config.NewRelicKey))
+		log.Printf("Using NewRelic")
+
+		config := newrelic.NewConfig(config.NewRelicName, config.NewRelicKey)
+		app, err := newrelic.NewApplication(config)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		router.Use(NewRelicMiddleware(app))
+
+		app.RecordCustomEvent("AppStarted", map[string]interface{}{
+			"cpus":    runtime.NumCPU(),
+			"version": runtime.Version(),
+		})
+
+		defer app.RecordCustomEvent("AppStopped", map[string]interface{}{
+			"cpus":    runtime.NumCPU(),
+			"version": runtime.Version(),
+		})
 	}
 
 	// Set up routes.
